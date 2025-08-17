@@ -19,7 +19,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.bizlink.emaintenance.mobile"
         minSdk = 21
         targetSdk = 36
@@ -30,7 +29,11 @@ android {
     signingConfigs {
         create("release") {
             // For development/testing - use debug keystore
-            // In production, replace with proper keystore
+            // In production, replace with proper keystore:
+            // keyAlias = "your-key-alias"
+            // keyPassword = "your-key-password"
+            // storeFile = file("path/to/your/keystore.jks")
+            // storePassword = "your-store-password"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
             storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")

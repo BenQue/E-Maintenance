@@ -25,10 +25,21 @@ npm run lint
 # Run tests across all packages  
 npm run test
 
+# Format code across all packages
+npm run format
+
+# Type check all packages
+cd apps/web && npm run type-check
+cd apps/api/user-service && npm run type-check
+
 # Run specific service tests
 cd apps/api/user-service && npm test
 cd apps/api/work-order-service && npm test
 cd apps/api/asset-service && npm test
+
+# Run tests in watch mode
+cd apps/web && npm run test:watch
+cd apps/api/user-service && npm run test:watch
 
 # Clean all build artifacts
 npm run clean
@@ -117,6 +128,7 @@ apps/
 
 packages/
 ├── database/               # Shared Prisma schema and migrations
+├── shared/                 # Shared utilities and types
 ├── typescript-config/      # Shared TypeScript configuration
 └── eslint-config/         # Shared linting rules
 ```
@@ -137,11 +149,18 @@ src/
 ### Frontend Application Structure
 ```
 apps/web/
-├── src/app/             # Next.js App Router pages
-├── components/          # React components (ui, features, forms)
+├── app/                 # Next.js App Router pages and layouts
+├── components/          # React components organized by feature
+│   ├── ui/              # Base UI components (buttons, cards, etc.)
+│   ├── layout/          # Layout components (navigation, headers)
+│   ├── work-orders/     # Work order feature components
+│   ├── assets/          # Asset management components
+│   ├── kpi/             # KPI dashboard components
+│   └── forms/           # Reusable form components
 ├── lib/
 │   ├── services/        # API client services
-│   └── stores/          # Zustand state management stores
+│   ├── stores/          # Zustand state management stores
+│   └── types/           # TypeScript type definitions
 └── hooks/               # Custom React hooks
 ```
 
@@ -168,6 +187,8 @@ apps/web/
 - Component tests for React components using React Testing Library
 - Integration tests for complete workflows
 - Tests co-located with source files using `.test.ts` extension
+- Test coverage tracking with detailed HTML reports in `coverage/` directories
+- Run individual test suites: `npm test` in specific service directories
 
 ## Environment Setup
 
@@ -215,12 +236,84 @@ NEXT_PUBLIC_API_URL="http://localhost:3001"
 - **Console Logging in Production**: Replace all `console.log/console.error` statements with structured logging
 - **Client-Side JWT Decoding**: JWT payload extraction should be moved to server-side for security
 
+### Recurring TypeScript Build Issues and Solutions
+
+**Issue**: TypeScript strict mode errors in Select component `onValueChange` handlers
+- **Error Pattern**: `Parameter 'value' implicitly has an 'any' type`
+- **Common Locations**: 
+  - Asset management forms (`AssetForm.tsx`)
+  - Work order forms (`WorkOrderCreateForm.tsx`, `WorkOrderFilters.tsx`)
+  - User management filters (`UserFilters.tsx`)
+  - Assignment forms (`AssignmentRuleForm.tsx`)
+  - KPI dashboard filters (`KPIDashboard.tsx`)
+- **Solution**: Add explicit type annotation `(value: string)` to all `onValueChange` handlers
+- **Quick Fix Command**: 
+  ```bash
+  # Fix all Select component type errors at once
+  find apps/web/components -name "*.tsx" -exec sed -i '' 's/onValueChange={(value) =>/onValueChange={(value: string) =>/g' {} \;
+  ```
+- **Prevention**: Always include type annotations when using shadcn/ui Select components
+
+**Docker Build Context**: These errors typically surface during Docker builds with `NODE_ENV=production` and strict TypeScript checking enabled. They may not appear in development mode but will block production deployments.
+
 ### Development Best Practices
 - Use structured logging (Winston/Pino) instead of console statements
 - Implement proper error handling and monitoring
 - Follow the established Controller-Service-Repository pattern
 - Maintain proper test coverage (currently ~63% across the codebase)
 - Use TypeScript strictly and avoid `any` types
+
+### Build and Deploy Process
+- **Turbo Build System**: All builds use Turborepo for optimized caching and parallelization
+- **Development Mode**: Use `npm run dev` to start all services with hot reload
+- **Production Builds**: Run `npm run build` to create optimized production bundles
+- **Mobile Development**: Flutter app requires `flutter run` for iOS/Android development
+
+### Docker Hybrid Deployment Mode (Recommended for Testing)
+
+**Hybrid deployment** combines Docker containers for infrastructure services with local development for API services, providing the best of both worlds for testing and development.
+
+#### Architecture:
+- **Docker Services**: Web application, PostgreSQL database, Redis cache
+- **Local Services**: All API microservices (user-service, work-order-service, asset-service)
+
+#### Setup Commands:
+```bash
+# 1. Start Docker infrastructure services
+docker-compose -f docker-compose.hybrid.yml up -d
+
+# 2. Start local API services (in separate terminals or background)
+cd apps/api/user-service && npm run dev      # Port 3001
+cd apps/api/work-order-service && npm run dev # Port 3002  
+cd apps/api/asset-service && npm run dev      # Port 3003
+
+# 3. Verify all services are running
+docker-compose -f docker-compose.hybrid.yml ps
+curl http://localhost:3001/health  # User service
+curl http://localhost:3002/health  # Work order service
+curl http://localhost:3003/health  # Asset service
+```
+
+#### Benefits:
+- **Fast API Development**: Local API services allow for rapid iteration and debugging
+- **Consistent Infrastructure**: Docker ensures consistent database and cache environments
+- **Easy Database Management**: PostgreSQL runs in container with persistent volumes
+- **Production-like Environment**: Web application runs in containerized environment
+- **Quick Troubleshooting**: Local API services can be easily restarted or debugged
+
+#### Configuration Files:
+- `docker-compose.hybrid.yml`: Infrastructure services only
+- `docker-compose.yml`: Full containerized deployment (not recommended for development)
+
+#### Common Issues and Solutions:
+- **Database Connection**: APIs connect to `localhost:5433` (Docker PostgreSQL)
+- **Network Access**: Web container can access local APIs via `host.docker.internal` or `localhost`
+- **Port Conflicts**: Ensure ports 3000, 3001, 3002, 3003, 5433, 6379 are available
+- **Service Dependencies**: Start Docker services first, then local APIs
+
+#### When to Use Full Docker vs Hybrid:
+- **Hybrid Mode**: Development, testing, debugging API services
+- **Full Docker**: Production deployment, CI/CD pipelines, environment isolation
 
 ## Security Considerations
 - JWT tokens should include refresh token mechanism
@@ -234,5 +327,28 @@ NEXT_PUBLIC_API_URL="http://localhost:3001"
   - 查看操作：开发环境 10,000/15分钟，生产环境 1,000/15分钟
   - 写操作：开发环境 200/15分钟，生产环境 50/15分钟
   - 解决了 429 错误，提升了用户体验和系统安全性
+
+## Key Development Guidelines
+
+### Code Quality Requirements
+
+- **ALWAYS run linting and type checking** before committing: `npm run lint && npm run type-check`
+- **Follow naming conventions**: Use camelCase for variables/functions, PascalCase for components/classes
+- **Component Organization**: Group related components by feature, not by technical layer
+- **State Management**: Use Zustand stores for complex state, React state for simple UI state
+- **API Integration**: Always use the service layer pattern, never call APIs directly from components
+
+### Testing Requirements
+
+- **Write tests for all new features**: Unit tests for services, component tests for UI
+- **Maintain test coverage**: Aim for >80% coverage on business logic
+- **Integration tests**: Write end-to-end tests for critical user workflows
+- **Test file naming**: Use `.test.ts` or `.test.tsx` extensions
+
+### Mobile Development Specifics
+
+- **Flutter Development**: Use `cd apps/mobile && flutter run` for development
+- **Pub Dependencies**: Run `flutter pub get` after changes to pubspec.yaml
+- **Platform Testing**: Test on both iOS and Android simulators/devices
 
 When working with this codebase, always consider the microservices architecture, maintain consistency with established patterns, and ensure proper role-based access control is implemented for any new features.
